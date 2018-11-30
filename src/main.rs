@@ -8,7 +8,6 @@ extern crate structopt;
 extern crate websocket;
 
 use structopt::StructOpt;
-use websocket::message::OwnedMessage;
 
 #[derive(StructOpt)]
 struct Opt {
@@ -96,32 +95,41 @@ fn main() -> Result<(), std::io::Error> {
 
         println!("Connected, ready to respond to messages");
 
-        while let Ok(OwnedMessage::Text(m)) = websocket.recv_message() {
-            println!("{}\n", m);
-            if let Ok(parsed) = ::serde_json::from_str::<WsMessage>(&m) {
-                // Only respond to normal messages sent in the specified channel
-                if &parsed.ty == "message" && parsed.channel == opt.channel {
-                    // Way too many one-word messages come out otherwise
-                    let text = loop {
-                        let attempt = chain.generate();
-                        println!("Attempt:\n{:?}", attempt);
-                        if attempt.len() > 5 {
-                            break attempt.join(" ");
+        loop {
+            use websocket::OwnedMessage::{Ping, Pong, Text, Close};
+            let maybe_msg = websocket.recv_message();
+            match maybe_msg {
+                Ok(Text(m)) => {
+                    if let Ok(parsed) = ::serde_json::from_str::<WsMessage>(&m) {
+                        // Only respond to normal messages sent in the specified channel
+                        if &parsed.ty == "message" && parsed.channel == opt.channel {
+                            // Way too many one-word messages come out otherwise
+                            let text = loop {
+                                let attempt = chain.generate();
+                                println!("Attempt:\n{:?}", attempt);
+                                if attempt.len() > 5 {
+                                    break attempt.join(" ");
+                                }
+                            };
+
+                            println!("Responding:\n{}\n\n", text);
+
+                            client
+                                .post("https://slack.com/api/chat.postMessage")
+                                .bearer_auth(&opt.token)
+                                .json(&Response {
+                                    channel: &opt.channel,
+                                    text: &text,
+                                    username: &opt.botname,
+                                }).send()
+                                .unwrap();
                         }
-                    };
-
-                    println!("Responding:\n{}\n\n", text);
-
-                    client
-                        .post("https://slack.com/api/chat.postMessage")
-                        .bearer_auth(&opt.token)
-                        .json(&Response {
-                            channel: &opt.channel,
-                            text: &text,
-                            username: &opt.botname,
-                        }).send()
-                        .unwrap();
+                    }
                 }
+                Ok(Ping(m)) => websocket.send_message(&Pong(m)).unwrap(),
+                Ok(Close(_)) => break,
+                Ok(_) => {}
+                Err(_) => break,
             }
         }
 

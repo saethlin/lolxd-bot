@@ -9,6 +9,6 @@ serde_derive = "1.0"
 serde_json = "1.0"
 reqwest = "0.9"
 markov = {git = "https://github.com/saethlin/markov", branch="stable", default-features=false, features=["hashbrown"]}
-openssl = { version = "0.10", features = ["vendored"] }
+#openssl = { version = "0.10", features = ["vendored"] }
 websocket = "0.21"
 structopt = "0.2"

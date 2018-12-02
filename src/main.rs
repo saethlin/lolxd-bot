@@ -100,6 +100,7 @@ fn main() -> Result<(), std::io::Error> {
             let maybe_msg = websocket.recv_message();
             match maybe_msg {
                 Ok(Text(m)) => {
+                    println!("{}\n", m);
                     if let Ok(parsed) = ::serde_json::from_str::<WsMessage>(&m) {
                         // Only respond to normal messages sent in the specified channel
                         if &parsed.ty == "message" && parsed.channel == opt.channel {
@@ -107,7 +108,7 @@ fn main() -> Result<(), std::io::Error> {
                             let text = loop {
                                 let attempt = chain.generate();
                                 println!("Attempt:\n{:?}", attempt);
-                                if attempt.len() > 5 {
+                                if attempt.len() > 1 {
                                     break attempt.join(" ");
                                 }
                             };

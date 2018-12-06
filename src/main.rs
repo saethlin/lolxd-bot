@@ -46,30 +46,46 @@ struct Response<'a> {
 fn main() -> Result<(), std::io::Error> {
     let opt = Opt::from_args();
 
-    let mut sentences = Vec::new();
+    let rx = {
+        let (tx, rx) = std::sync::mpsc::channel();
 
-    // Load message history
-    for file_path in std::fs::read_dir(&opt.logs)?
-        .map(|dir_entry| dir_entry.unwrap())
-        .filter(|dir_entry| dir_entry.file_type().unwrap().is_dir())
-        .flat_map(|directory| std::fs::read_dir(directory.path()).unwrap())
-        .map(|file| file.unwrap().path())
-        .filter(|file_path| file_path.to_str().unwrap().ends_with("json"))
-    {
-        let contents = std::fs::read_to_string(&file_path)?;
-        let messages: Vec<Message> = serde_json::from_str(&contents).unwrap();
-        for text in messages.into_iter().filter_map(|message| message.text) {
-            if text.split_whitespace().count() > 1 {
-                sentences.push(text);
-            }
+        // Load message history
+        for file_path in std::fs::read_dir(&opt.logs)?
+            .map(|dir_entry| dir_entry.unwrap())
+            .filter(|dir_entry| dir_entry.file_type().unwrap().is_dir())
+            .flat_map(|directory| std::fs::read_dir(directory.path()).unwrap())
+            .map(|file| file.unwrap().path())
+            .filter(|file_path| file_path.to_str().unwrap().ends_with("json"))
+        {
+            let sender = tx.clone();
+            std::thread::spawn(move || {
+                let mut sentences = Vec::new();
+                let contents = std::fs::read_to_string(&file_path).unwrap();
+                let messages: Vec<Message> = serde_json::from_str(&contents).unwrap();
+                for text in messages.into_iter().filter_map(|message| message.text) {
+                    if text.split_whitespace().count() > 1 {
+                        sentences.push(text);
+                    }
+                }
+                sender.send(sentences).unwrap();
+            });
         }
-    }
+        rx
+    };
 
     let mut chain = markov::Chain::of_order(2);
 
-    for sentence in sentences.iter() {
-        chain.feed(sentence.split_whitespace().collect());
+    while let Ok(day) = rx.recv() {
+        for sentence in day.iter() {
+            chain.feed_str(sentence);
+        }
     }
+
+    /*
+    for (k, v) in chain.map.iter() {
+        println!("{}, {}", k.len(), v.len());
+    }
+    */
 
     println!("Message history loaded");
 
@@ -96,7 +112,7 @@ fn main() -> Result<(), std::io::Error> {
         println!("Connected, ready to respond to messages");
 
         loop {
-            use websocket::OwnedMessage::{Ping, Pong, Text, Close};
+            use websocket::OwnedMessage::{Close, Ping, Pong, Text};
             let maybe_msg = websocket.recv_message();
             match maybe_msg {
                 Ok(Text(m)) => {

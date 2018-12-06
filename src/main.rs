@@ -76,18 +76,18 @@ fn main() -> Result<(), std::io::Error> {
     loop {
         let client = reqwest::Client::new();
 
-        let resp = client
+        let json = client
             .get(&format!(
                 "https://slack.com/api/rtm.connect?token={}",
                 opt.token
             ))
             .send()
-            .unwrap()
-            .text()
+            .and_then(|mut r| r.text())
             .unwrap();
 
-        let url: ConnectResponse = ::serde_json::from_str(&resp).unwrap();
-        let url = url.url;
+        let url = ::serde_json::from_str::<ConnectResponse>(&json)
+            .unwrap()
+            .url;
 
         let mut websocket = websocket::ClientBuilder::new(&url)
             .unwrap()

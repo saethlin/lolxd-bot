@@ -1,6 +1,4 @@
-#[macro_use]
-extern crate serde_derive;
-
+use serde_derive::{Deserialize, Serialize};
 use structopt::StructOpt;
 
 #[derive(StructOpt)]

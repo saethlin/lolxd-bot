@@ -1,11 +1,5 @@
-extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-extern crate markov;
-extern crate reqwest;
-extern crate serde_json;
-extern crate structopt;
-extern crate websocket;
 
 use structopt::StructOpt;
 
@@ -75,17 +69,9 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut chain = markov::Chain::of_order(2);
 
-    while let Ok(day) = rx.recv() {
-        for sentence in day.iter() {
-            chain.feed_str(sentence);
-        }
+    for sentence in rx.iter().flat_map(|day| day.into_iter()) {
+        chain.feed_str(&sentence);
     }
-
-    /*
-    for (k, v) in chain.map.iter() {
-        println!("{}, {}", k.len(), v.len());
-    }
-    */
 
     println!("Message history loaded");
 
@@ -96,7 +82,8 @@ fn main() -> Result<(), std::io::Error> {
             .get(&format!(
                 "https://slack.com/api/rtm.connect?token={}",
                 opt.token
-            )).send()
+            ))
+            .send()
             .unwrap()
             .text()
             .unwrap();
@@ -111,11 +98,11 @@ fn main() -> Result<(), std::io::Error> {
 
         println!("Connected, ready to respond to messages");
 
-        loop {
-            use websocket::OwnedMessage::{Close, Ping, Pong, Text};
-            let maybe_msg = websocket.recv_message();
-            match maybe_msg {
-                Ok(Text(m)) => {
+        use websocket::OwnedMessage::{Close, Ping, Pong, Text};
+
+        while let Ok(message) = websocket.recv_message() {
+            match message {
+                Text(m) => {
                     println!("{}\n", m);
                     if let Ok(parsed) = ::serde_json::from_str::<WsMessage>(&m) {
                         // Only respond to normal messages sent in the specified channel
@@ -138,15 +125,15 @@ fn main() -> Result<(), std::io::Error> {
                                     channel: &opt.channel,
                                     text: &text,
                                     username: &opt.botname,
-                                }).send()
+                                })
+                                .send()
                                 .unwrap();
                         }
                     }
                 }
-                Ok(Ping(m)) => websocket.send_message(&Pong(m)).unwrap(),
-                Ok(Close(_)) => break,
-                Ok(_) => {}
-                Err(_) => break,
+                Ping(m) => websocket.send_message(&Pong(m)).unwrap(),
+                Close(_) => break,
+                _ => {}
             }
         }
 

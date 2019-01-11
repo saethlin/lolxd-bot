@@ -36,10 +36,10 @@ struct Response<'a> {
 fn main() -> Result<(), std::io::Error> {
     let args: Vec<_> = std::env::args().collect();
     let opt = Opt {
-        logs: args[0].clone(),
-        token: args[1].clone(),
-        channel: args[2].clone(),
-        botname: args[3].clone(),
+        logs: args[1].clone(),
+        token: args[2].clone(),
+        channel: args[3].clone(),
+        botname: args[4].clone(),
     };
 
     let rx = {

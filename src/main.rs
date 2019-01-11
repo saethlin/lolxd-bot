@@ -1,7 +1,5 @@
 use serde_derive::{Deserialize, Serialize};
-use structopt::StructOpt;
 
-#[derive(StructOpt)]
 struct Opt {
     logs: String,
     token: String,
@@ -36,7 +34,13 @@ struct Response<'a> {
 }
 
 fn main() -> Result<(), std::io::Error> {
-    let opt = Opt::from_args();
+    let args: Vec<_> = std::env::args().collect();
+    let opt = Opt {
+        logs: args[0].clone(),
+        token: args[1].clone(),
+        channel: args[2].clone(),
+        botname: args[3].clone(),
+    };
 
     let rx = {
         let (tx, rx) = std::sync::mpsc::channel();
@@ -74,29 +78,21 @@ fn main() -> Result<(), std::io::Error> {
     println!("Message history loaded");
 
     loop {
-        let client = reqwest::Client::new();
+        let response = weeqwest::get(&format!(
+            "https://slack.com/api/rtm.connect?token={}",
+            opt.token
+        ))
+        .unwrap();
 
-        let json = client
-            .get(&format!(
-                "https://slack.com/api/rtm.connect?token={}",
-                opt.token
-            ))
-            .send()
-            .and_then(|mut r| r.text())
-            .unwrap();
-
-        let url = ::serde_json::from_str::<ConnectResponse>(&json)
+        let url = ::serde_json::from_slice::<ConnectResponse>(&response.bytes())
             .unwrap()
             .url;
 
-        let mut websocket = websocket::ClientBuilder::new(&url)
-            .unwrap()
-            .connect_secure(None)
-            .unwrap();
+        let mut websocket = weebsocket::Client::connect_secure(&url).unwrap();
 
         println!("Connected, ready to respond to messages");
 
-        use websocket::OwnedMessage::{Close, Ping, Pong, Text};
+        use weebsocket::Message::{Close, Ping, Pong, Text};
 
         while let Ok(message) = websocket.recv_message() {
             match message {
@@ -116,21 +112,25 @@ fn main() -> Result<(), std::io::Error> {
 
                             println!("Responding:\n{}\n\n", text);
 
-                            client
-                                .post("https://slack.com/api/chat.postMessage")
-                                .bearer_auth(&opt.token)
-                                .json(&Response {
-                                    channel: &opt.channel,
-                                    text: &text,
-                                    username: &opt.botname,
-                                })
-                                .send()
-                                .unwrap();
+                            let request =
+                                weeqwest::Request::post("https://slack.com/api/chat.postMessage")
+                                    .unwrap()
+                                    .add_header("authorization", &format!("Bearer {}", &opt.token))
+                                    .json(
+                                        serde_json::to_string(&Response {
+                                            channel: &opt.channel,
+                                            text: &text,
+                                            username: &opt.botname,
+                                        })
+                                        .unwrap(),
+                                    );
+                            let response = weeqwest::send(&request).unwrap();
+                            println!("{:?}", std::str::from_utf8(response.bytes()));
                         }
                     }
                 }
                 Ping(m) => websocket.send_message(&Pong(m)).unwrap(),
-                Close(_) => break,
+                Close => break,
                 _ => {}
             }
         }

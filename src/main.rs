@@ -130,7 +130,7 @@ fn main() -> Result<(), std::io::Error> {
                     }
                 }
                 Ping(m) => websocket.send_message(&Pong(m)).unwrap(),
-                Close => break,
+                Close(_) => break,
                 _ => {}
             }
         }
